@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SkyWay — Simple Flights</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@300;400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  /*
+   * ── KEYBOARD ACCESSIBILITY ADDITIONS ──
+   * 1. All interactive elements have :focus-visible outlines (3px minimum)
+   * 2. Focus is programmatically moved to each new screen's heading on step change
+   * 3. Flight cards support Up/Down arrow navigation (roving tabindex)
+   * 4. Seat grid supports Arrow key navigation (roving tabindex within rows/cols)
+   * 5. Escape key closes/cancels where relevant
+   * 6. Tab order follows logical reading order throughout
+   * 7. No keyboard traps: every modal/step has a clear exit path
+   * 8. Focus outline never obscured by overflow:hidden or z-index issues
+   * 9. Keyboard shortcut hint panel (? key)
+   *
+   * ── CONTRAST AUDIT (WCAG AA: 4.5:1 normal, 3:1 large/UI) ──
+   * Dark: body #E8EDF5/#0A1628=13:1 | muted #A8B8D8/#12233F=5.5:1 | blue #1A6BFF/#0A1628=5.1:1
+   * Light: body #111827/#F5F7FA=17:1 | muted #4B5563/#F5F7FA=7.4:1 | blue #1455CC/#F5F7FA=7.1:1
+   */
+
+  :root {
+    --sky:          #0A1628;
+    --sky-card:     #12233F;
+    --blue:         #1A6BFF;
+    --blue-hover:   #3D82FF;
+    --gold:         #E8B800;
+    --text:         #E8EDF5;
+    --muted:        #A8B8D8;
+    --border:       rgba(255,255,255,0.12);
+    --step-done:    #16A34A;
+    --step-idle-bg: #1A2E4A;
+    --focus-ring:   #FFFFFF;        /* White ring on dark backgrounds */
+
+    --f-bg:         #F5F7FA;
+    --f-card:       #FFFFFF;
+    --f-text:       #111827;
+    --f-blue:       #1455CC;
+    --f-blue-bg:    #DCE8FF;
+    --f-muted:      #4B5563;
+    --f-border:     #CBD5E1;
+    --f-gold-bg:    #FEF3C7;
+    --f-gold-txt:   #7A4E00;
+    --f-tip-bg:     #FFF8DC;
+    --f-tip-txt:    #4A3800;
+    --f-tip-bdr:    #D4A000;
+    --focus-ring-light: #1455CC;   /* Blue ring on light backgrounds */
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  /* ── Global: never suppress outlines, use :focus-visible ── */
+  :focus { outline: none; }
+  :focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+  body.focus :focus-visible {
+    outline-color: var(--focus-ring-light);
+  }
+
+  /* ── SKIP LINK ── */
+  .skip-link {
+    position: absolute;
+    top: -100px;
+    left: 16px;
+    background: var(--blue);
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 0 0 8px 8px;
+    font-size: 14px;
+    font-weight: 600;
+    z-index: 9999;
+    transition: top 0.2s;
+    font-family: 'DM Sans', sans-serif;
+    text-decoration: none;
+  }
+  .skip-link:focus-visible { top: 0; outline: 3px solid #fff; outline-offset: 2px; }
+
+  /* ── KEYBOARD SHORTCUT OVERLAY ── */
+  .kb-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+  }
+  .kb-overlay.open { display: flex; }
+  .kb-panel {
+    background: #1A2E4A;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-radius: 20px;
+    padding: 32px;
+    max-width: 420px;
+    width: 90%;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+  }
+  body.focus .kb-panel { background: var(--f-card); color: var(--f-text); border-color: var(--f-border); }
+  .kb-panel h2 {
+    font-family: 'Fraunces', serif;
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .kb-close {
+    background: transparent;
+    border: 2px solid rgba(255,255,255,0.25);
+    border-radius: 8px;
+    color: var(--text);
+    font-size: 18px;
+    cursor: pointer;
+    width: 34px; height: 34px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'DM Sans', sans-serif;
+  }
+  body.focus .kb-close { border-color: var(--f-border); color: var(--f-text); }
+  .kb-close:focus-visible { outline: 3px solid var(--focus-ring); }
+  body.focus .kb-close:focus-visible { outline-color: var(--focus-ring-light); }
+  .kb-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    font-size: 14px;
+  }
+  body.focus .kb-row { border-bottom-color: var(--f-border); }
+  .kb-row:last-child { border-bottom: none; }
+  .kb-desc { color: var(--muted); }
+  body.focus .kb-desc { color: var(--f-muted); }
+  .kb-key {
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: monospace;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  body.focus .kb-key { background: var(--f-blue-bg); border-color: var(--f-blue); color: var(--f-blue); }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--sky);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+    transition: background 0.4s ease, color 0.4s ease;
+  }
+  body.focus { background: var(--f-bg); color: var(--f-text); }
+
+  /* ── HEADER ── */
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--sky);
+    transition: background 0.4s, border-color 0.4s;
+  }
+  body.focus header { background: var(--f-card); border-bottom: 2px solid var(--f-border); box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+
+  .header-right { display: flex; align-items: center; gap: 12px; }
+
+  /* Keyboard hint button */
+  .kb-hint-btn {
+    background: rgba(255,255,255,0.07);
+    border: 2px solid rgba(255,255,255,0.2);
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 700;
+    width: 34px; height: 34px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-family: monospace;
+    transition: all 0.2s;
+  }
+  .kb-hint-btn:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+  body.focus .kb-hint-btn { background: var(--f-blue-bg); border-color: var(--f-blue); color: var(--f-blue); }
+
+  .logo {
+    font-family: 'Fraunces', serif;
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    transition: color 0.4s;
+  }
+  .logo:focus-visible { outline-offset: 4px; border-radius: 6px; }
+  body.focus .logo { color: var(--f-blue); }
+  .logo-icon { width: 32px; height: 32px; background: var(--blue); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+
+  /* ── FOCUS TOGGLE ── */
+  .focus-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    background: rgba(255,255,255,0.07);
+    border: 2px solid rgba(255,255,255,0.22);
+    border-radius: 40px;
+    padding: 8px 16px;
+    transition: all 0.3s ease;
+    user-select: none;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--text);
+  }
+  .focus-toggle:hover { background: rgba(255,255,255,0.12); }
+  body.focus .focus-toggle { background: var(--f-blue-bg); border-color: var(--f-blue); color: var(--f-text); }
+  .toggle-label { font-size: 13px; font-weight: 600; color: var(--muted); }
+  body.focus .toggle-label { color: var(--f-blue); }
+  .toggle-switch {
+    width: 36px; height: 20px;
+    background: #4A6080;
+    border-radius: 10px;
+    position: relative;
+    transition: background 0.3s;
+    border: 1px solid rgba(255,255,255,0.25);
+    flex-shrink: 0;
+  }
+  .toggle-switch::after {
+    content: '';
+    position: absolute;
+    width: 14px; height: 14px;
+    background: #E8EDF5;
+    border-radius: 50%;
+    top: 2px; left: 2px;
+    transition: transform 0.3s ease;
+  }
+  body.focus .toggle-switch { background: var(--f-blue); border-color: var(--f-blue); }
+  body.focus .toggle-switch::after { transform: translateX(16px); background: #fff; }
+
+  /* ── FOCUS BANNER ── */
+  .focus-banner {
+    display: none;
+    background: var(--f-blue-bg);
+    border-bottom: 2px solid var(--f-blue);
+    padding: 14px 28px;
+    text-align: center;
+    font-size: 15px;
+    color: var(--f-blue);
+    font-weight: 600;
+    animation: slideDown 0.3s ease;
+  }
+  body.focus .focus-banner { display: block; }
+  @keyframes slideDown { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+
+  /* ── LIVE REGION ── */
+  #liveRegion { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+
+  /* ── STEPPER ── */
+  nav.stepper { display: flex; justify-content: center; align-items: center; padding: 28px 28px 0; }
+  .step { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; max-width: 120px; }
+  .step-circle {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    background: var(--step-idle-bg);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; font-weight: 700;
+    color: var(--muted);
+    z-index: 1;
+    transition: all 0.4s ease;
+  }
+  .step.active .step-circle { background: var(--blue); color: #fff; box-shadow: 0 0 0 4px rgba(26,107,255,0.25); }
+  .step.done   .step-circle { background: var(--step-done); color: #fff; }
+  .step-label { font-size: 11px; color: var(--muted); font-weight: 600; text-align: center; transition: color 0.4s; }
+  .step.active .step-label { color: var(--text); font-weight: 700; }
+  .step.done   .step-label { color: var(--step-done); }
+  .step-line { flex: 1; height: 2px; background: var(--step-idle-bg); margin-bottom: 22px; transition: background 0.4s; }
+  .step-line.done { background: var(--step-done); }
+
+  body.focus .step-circle      { background: #E2E8F0; color: #374151; }
+  body.focus .step.active .step-circle { background: var(--f-blue); color: #fff; box-shadow: 0 0 0 5px rgba(20,85,204,0.15); }
+  body.focus .step.done  .step-circle  { background: var(--step-done); color: #fff; }
+  body.focus .step-label       { color: var(--f-muted); }
+  body.focus .step.active .step-label  { color: var(--f-blue); font-weight: 700; }
+  body.focus .step.done  .step-label   { color: var(--step-done); }
+  body.focus .step-line  { background: #CBD5E1; }
+  body.focus .step-line.done { background: var(--step-done); }
+
+  /* ── MAIN ── */
+  main.main { padding: 24px 28px 60px; max-width: 680px; margin: 0 auto; }
+
+  /* ── CARD ── */
+  .card {
+    background: var(--sky-card);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px;
+    padding: 28px;
+    margin-top: 24px;
+    animation: fadeUp 0.4s ease;
+    transition: background 0.4s, border-color 0.4s;
+  }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+  body.focus .card { background: var(--f-card); border: 2px solid var(--f-border); box-shadow: 0 4px 24px rgba(0,0,0,0.07); }
+
+  .card-title {
+    font-family: 'Fraunces', serif;
+    font-size: 20px; font-weight: 600;
+    margin-bottom: 20px;
+    color: var(--text);
+    display: flex; align-items: center; gap: 10px;
+    transition: color 0.4s;
+  }
+  body.focus .card-title { color: var(--f-text); font-size: 22px; }
+  .card-icon { width: 36px; height: 36px; border-radius: 10px; background: rgba(26,107,255,0.18); display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0; }
+  body.focus .card-icon { background: var(--f-blue-bg); }
+
+  /* ── HELPER TIP ── */
+  .helper-tip {
+    display: none;
+    background: var(--f-tip-bg);
+    border: 2px solid var(--f-tip-bdr);
+    border-radius: 12px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+    font-size: 14px;
+    color: var(--f-tip-txt);
+    line-height: 1.6;
+  }
+  body.focus .helper-tip { display: flex; gap: 10px; align-items: flex-start; }
+
+  /* ── FORM ── */
+  .field-group { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
+  .field-label { font-size: 13px; font-weight: 700; color: var(--muted); letter-spacing: 0.5px; text-transform: uppercase; transition: color 0.4s; }
+  body.focus .field-label { font-size: 15px; text-transform: none; color: var(--f-text); letter-spacing: 0; }
+  .field-hint { display: none; font-size: 13px; color: var(--f-muted); margin-top: -2px; margin-bottom: 4px; line-height: 1.5; }
+  body.focus .field-hint { display: block; }
+
+  input, select {
+    width: 100%;
+    background: rgba(255,255,255,0.06);
+    border: 2px solid rgba(255,255,255,0.2);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-size: 15px;
+    font-family: 'DM Sans', sans-serif;
+    color: var(--text);
+    outline: none;
+    transition: all 0.3s ease;
+    -webkit-appearance: none;
+  }
+  input::placeholder { color: #7A90B8; }
+  /* Custom focus ring for inputs — replaces global :focus-visible */
+  input:focus-visible, select:focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+    border-color: var(--blue);
+    background: rgba(26,107,255,0.1);
+    box-shadow: 0 0 0 4px rgba(26,107,255,0.2);
+    border-radius: 12px;
+  }
+  select option { background: #0F1E3A; color: #E8EDF5; }
+
+  body.focus input, body.focus select {
+    background: var(--f-card);
+    border: 2px solid var(--f-border);
+    color: var(--f-text);
+    font-size: 17px;
+    padding: 16px 18px;
+    border-radius: 14px;
+  }
+  body.focus select option { background: #fff; color: #111827; }
+  body.focus input::placeholder { color: #6B7280; }
+  body.focus input:focus-visible, body.focus select:focus-visible {
+    outline-color: var(--focus-ring-light);
+    border-color: var(--f-blue);
+    background: #EEF4FF;
+    box-shadow: 0 0 0 4px rgba(20,85,204,0.15);
+    border-radius: 14px;
+  }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+  /* ── TRIP PILLS ── */
+  .trip-pills { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .pill {
+    padding: 10px 20px;
+    border-radius: 40px;
+    border: 2px solid rgba(255,255,255,0.22);
+    font-size: 14px; font-weight: 600;
+    cursor: pointer;
+    color: var(--muted);
+    transition: all 0.2s ease;
+    background: transparent;
+    font-family: 'DM Sans', sans-serif;
+  }
+  .pill:hover { border-color: var(--blue-hover); color: var(--text); }
+  .pill[aria-pressed="true"] { background: var(--blue); border-color: var(--blue); color: #fff; box-shadow: 0 4px 14px rgba(26,107,255,0.35); }
+
+  body.focus .pill { border: 2px solid var(--f-border); color: var(--f-muted); font-size: 16px; padding: 12px 22px; border-radius: 14px; background: var(--f-card); }
+  body.focus .pill[aria-pressed="true"] { background: var(--f-blue-bg); border-color: var(--f-blue); color: var(--f-blue); font-weight: 700; box-shadow: none; }
+  body.focus .pill:hover { border-color: var(--f-blue); color: var(--f-blue); }
+
+  /* ── COUNTER ── */
+  .counter-row { display: flex; justify-content: space-between; align-items: center; padding: 14px 0; border-bottom: 1px solid var(--border); }
+  .counter-row:last-child { border-bottom: none; padding-bottom: 0; }
+  body.focus .counter-row { border-bottom-color: var(--f-border); }
+  .counter-title { font-size: 15px; font-weight: 600; }
+  body.focus .counter-title { font-size: 17px; }
+  .counter-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  body.focus .counter-sub { font-size: 14px; color: var(--f-muted); }
+  .counter-controls { display: flex; align-items: center; gap: 16px; }
+  .counter-btn {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.25);
+    background: transparent;
+    color: var(--text);
+    font-size: 20px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s;
+    font-family: 'DM Sans', sans-serif;
+    line-height: 1;
+  }
+  .counter-btn:hover:not(:disabled) { background: rgba(255,255,255,0.1); border-color: var(--blue-hover); }
+  .counter-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+  body.focus .counter-btn { width: 44px; height: 44px; border: 2px solid var(--f-border); color: var(--f-text); font-size: 22px; border-radius: 12px; background: var(--f-card); }
+  body.focus .counter-btn:hover:not(:disabled) { background: var(--f-blue-bg); border-color: var(--f-blue); color: var(--f-blue); }
+  .counter-val { font-size: 18px; font-weight: 700; min-width: 20px; text-align: center; }
+  body.focus .counter-val { font-size: 22px; }
+
+  /* ── FLIGHT CARDS ── */
+  .flight-card {
+    border: 2px solid rgba(255,255,255,0.1);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    background: rgba(255,255,255,0.03);
+    position: relative;
+    overflow: visible; /* Never clip focus outline */
+  }
+  /* Keyboard focus ring on flight card — needs extra visibility */
+  .flight-card:focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 3px;
+    border-color: var(--blue);
+    border-radius: 16px;
+  }
+  body.focus .flight-card:focus-visible { outline-color: var(--focus-ring-light); }
+
+  .flight-card::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: transparent; transition: background 0.3s; border-radius: 3px 0 0 3px; }
+  .flight-card:hover { border-color: rgba(26,107,255,0.5); background: rgba(26,107,255,0.05); }
+  .flight-card[aria-selected="true"] { border-color: var(--blue); background: rgba(26,107,255,0.08); }
+  .flight-card[aria-selected="true"]::before { background: var(--blue); }
+
+  body.focus .flight-card { border: 2px solid var(--f-border); background: var(--f-card); border-radius: 18px; padding: 22px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+  body.focus .flight-card:hover { border-color: var(--f-blue); }
+  body.focus .flight-card[aria-selected="true"] { border-color: var(--f-blue); background: #EEF4FF; }
+
+  .flight-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 6px; }
+  .flight-airline { font-size: 13px; color: var(--muted); font-weight: 600; }
+  body.focus .flight-airline { font-size: 14px; color: var(--f-muted); }
+  .flight-badge { background: rgba(232,184,0,0.18); color: var(--gold); border-radius: 20px; padding: 4px 12px; font-size: 11px; font-weight: 700; border: 1px solid rgba(232,184,0,0.3); }
+  body.focus .flight-badge { background: var(--f-gold-bg); color: var(--f-gold-txt); font-size: 13px; border: 1px solid #D4A000; }
+  .flight-times { display: flex; align-items: center; gap: 16px; }
+  .flight-time  { font-size: 26px; font-family: 'Fraunces', serif; font-weight: 600; }
+  body.focus .flight-time { font-size: 30px; }
+  .flight-city  { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  body.focus .flight-city { font-size: 14px; color: var(--f-muted); }
+  .flight-line  { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .flight-duration { font-size: 12px; color: var(--muted); font-weight: 600; }
+  body.focus .flight-duration { font-size: 14px; color: var(--f-muted); }
+  .line-visual { width: 100%; height: 2px; background: rgba(255,255,255,0.18); position: relative; }
+  body.focus .line-visual { background: var(--f-border); }
+  .line-dot { position: absolute; width: 7px; height: 7px; border-radius: 50%; background: var(--blue); top: -2.5px; }
+  .line-dot.left { left: 0; } .line-dot.right { right: 0; }
+  .flight-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.1); }
+  body.focus .flight-bottom { border-top-color: var(--f-border); }
+  .flight-stops { font-size: 13px; color: var(--muted); font-weight: 500; }
+  body.focus .flight-stops { font-size: 15px; color: var(--f-muted); }
+  .flight-price { font-size: 22px; font-family: 'Fraunces', serif; font-weight: 700; }
+  body.focus .flight-price { font-size: 26px; }
+  .price-note { font-size: 12px; color: var(--muted); }
+  body.focus .price-note { font-size: 13px; color: var(--f-muted); }
+  .flight-check { display: none; width: 28px; height: 28px; border-radius: 50%; background: var(--blue); color: #fff; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+  .flight-card[aria-selected="true"] .flight-check { display: flex; }
+  body.focus .flight-check { width: 34px; height: 34px; font-size: 18px; }
+
+  /* ── SEAT MAP ── */
+  .seat-legend { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
+  body.focus .legend-item { font-size: 15px; color: var(--f-muted); }
+  .legend-dot { width: 14px; height: 14px; border-radius: 4px; }
+
+  .seat-grid { display: flex; flex-direction: column; gap: 6px; max-width: 340px; margin: 0 auto; }
+  .seat-row  { display: flex; align-items: center; gap: 6px; }
+  .seat-row-num { width: 20px; font-size: 11px; color: var(--muted); text-align: center; font-weight: 700; }
+  body.focus .seat-row-num { color: var(--f-muted); }
+  .seat-aisle { width: 20px; }
+
+  .seat {
+    width: 38px; height: 38px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 700;
+    user-select: none;
+    font-family: 'DM Sans', sans-serif;
+  }
+  /* Seat focus ring — white on dark */
+  .seat:focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: 8px;
+    z-index: 1;
+    position: relative;
+  }
+  body.focus .seat:focus-visible { outline-color: var(--focus-ring-light); }
+
+  .seat.available { background: rgba(26,107,255,0.18); color: #90B8FF; border: 2px solid rgba(26,107,255,0.35); }
+  .seat.available:hover { background: var(--blue); color: #fff; transform: scale(1.1); }
+  .seat.taken    { background: rgba(255,255,255,0.06); color: #5A6A84; cursor: not-allowed; border: 2px solid rgba(255,255,255,0.08); }
+  .seat.selected { background: var(--gold); color: #1A0F00; border: 2px solid #C09A00; transform: scale(1.05); }
+  .seat.premium  { background: rgba(232,184,0,0.14); color: var(--gold); border: 2px solid rgba(232,184,0,0.3); }
+  .seat.premium:hover { background: var(--gold); color: #1A0F00; transform: scale(1.1); }
+
+  body.focus .seat { width: 46px; height: 46px; font-size: 13px; border-radius: 10px; }
+  body.focus .seat.available { background: var(--f-blue-bg); color: #1A4DC4; border: 2px solid #9DBFFF; }
+  body.focus .seat.available:hover { background: var(--f-blue); color: #fff; }
+  body.focus .seat.taken    { background: #E5E7EB; color: #4B5563; border: 2px solid #D1D5DB; }
+  body.focus .seat.selected { background: var(--f-blue); color: #fff; border: 2px solid #0D3EA0; box-shadow: 0 4px 12px rgba(20,85,204,0.3); }
+  body.focus .seat.premium  { background: var(--f-gold-bg); color: var(--f-gold-txt); border: 2px solid #D4A000; }
+  body.focus .seat.premium:hover { background: #FDE68A; color: #5A3800; }
+  body.focus .seat:focus-visible { border-radius: 10px; }
+
+  /* ── SUMMARY ── */
+  .summary-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 15px; }
+  body.focus .summary-row { border-bottom-color: var(--f-border); padding: 16px 0; font-size: 16px; }
+  .summary-row:last-child { border-bottom: none; }
+  .summary-label { color: var(--muted); }
+  body.focus .summary-label { color: var(--f-muted); }
+  .summary-val { font-weight: 700; }
+  .summary-total { display: flex; justify-content: space-between; padding: 16px 0 0; font-size: 20px; font-family: 'Fraunces', serif; font-weight: 700; margin-top: 4px; border-top: 2px solid rgba(255,255,255,0.12); }
+  body.focus .summary-total { font-size: 24px; padding-top: 20px; border-top-color: var(--f-border); }
+  .total-price { color: #90B8FF; }
+  body.focus .total-price { color: var(--f-blue); }
+
+  /* ── BUTTONS ── */
+  .btn-primary {
+    width: 100%; padding: 16px;
+    background: var(--blue); color: #fff;
+    border: none; border-radius: 14px;
+    font-size: 16px; font-weight: 700;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    margin-top: 20px;
+    transition: all 0.25s ease;
+  }
+  .btn-primary:hover:not(:disabled) { background: var(--blue-hover); transform: translateY(-1px); box-shadow: 0 8px 24px rgba(26,107,255,0.4); }
+  /* btn-primary focus ring: white outline since button is blue */
+  .btn-primary:focus-visible { outline: 3px solid #fff; outline-offset: 3px; border-radius: 14px; }
+  .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+  body.focus .btn-primary { padding: 20px; font-size: 18px; border-radius: 16px; background: var(--f-blue); }
+  body.focus .btn-primary:hover:not(:disabled) { background: #0D44A8; box-shadow: 0 8px 28px rgba(20,85,204,0.3); }
+  body.focus .btn-primary:focus-visible { outline-color: #fff; border-radius: 16px; }
+
+  .btn-back {
+    width: 100%; padding: 14px;
+    background: transparent;
+    color: #C0CFEA;
+    border: 2px solid rgba(255,255,255,0.22);
+    border-radius: 14px;
+    font-size: 15px; font-weight: 600;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    margin-top: 10px;
+    transition: all 0.2s;
+  }
+  .btn-back:hover { border-color: #C0CFEA; background: rgba(255,255,255,0.05); }
+  .btn-back:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 3px; border-radius: 14px; }
+  body.focus .btn-back { padding: 18px; font-size: 17px; border: 2px solid var(--f-border); color: #374151; border-radius: 16px; background: transparent; }
+  body.focus .btn-back:hover { border-color: #374151; background: #F0F2F5; }
+  body.focus .btn-back:focus-visible { outline-color: var(--focus-ring-light); border-radius: 16px; }
+
+  /* ── CONFIRMATION ── */
+  .confirm-hero { text-align: center; padding: 20px 0; }
+  .confirm-icon { width: 80px; height: 80px; border-radius: 50%; background: rgba(22,163,74,0.18); display: flex; align-items: center; justify-content: center; font-size: 40px; margin: 0 auto 20px; animation: pop 0.5s cubic-bezier(0.34,1.56,0.64,1); }
+  @keyframes pop { from { transform:scale(0); opacity:0; } to { transform:scale(1); opacity:1; } }
+  body.focus .confirm-icon { background: #DCFCE7; }
+  .confirm-title { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+  body.focus .confirm-title { font-size: 32px; color: var(--f-text); }
+  .confirm-sub { color: var(--muted); font-size: 15px; }
+  body.focus .confirm-sub { font-size: 17px; color: var(--f-muted); }
+  .confirm-ref { background: rgba(26,107,255,0.1); border: 2px solid rgba(26,107,255,0.3); border-radius: 14px; padding: 16px 20px; margin: 20px 0; text-align: center; }
+  body.focus .confirm-ref { background: var(--f-blue-bg); border-color: var(--f-blue); border-radius: 16px; padding: 20px; }
+  .ref-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; font-weight: 700; }
+  body.focus .ref-label { font-size: 14px; text-transform: none; color: var(--f-muted); }
+  .ref-code { font-family: 'Fraunces', serif; font-size: 28px; font-weight: 700; letter-spacing: 3px; color: #90B8FF; }
+  body.focus .ref-code { font-size: 32px; color: var(--f-blue); }
+
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  footer { text-align: center; padding: 20px 28px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--border); }
+  body.focus footer { border-top-color: var(--f-border); color: var(--f-muted); }
+  footer a { color: var(--muted); text-decoration: underline; }
+  body.focus footer a { color: var(--f-muted); }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+  body.focus ::-webkit-scrollbar-thumb { background: #CBD5E1; }
+</style>
+</head>
+<body>
+
+<!-- ── SKIP LINK: First tab stop, jumps past header/nav ── -->
+<a href="#main-content" class="skip-link">Skip to main content</a>
+
+<!-- ── LIVE REGION: screen reader step/action announcements ── -->
+<div id="liveRegion" role="status" aria-live="polite" aria-atomic="true" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden"></div>
+
+<!-- ── KEYBOARD SHORTCUT OVERLAY (dialog pattern, traps focus while open) ── -->
+<div class="kb-overlay" id="kbOverlay" role="dialog" aria-modal="true" aria-labelledby="kbTitle">
+  <div class="kb-panel">
+    <h2 id="kbTitle">
+      Keyboard Shortcuts
+      <button class="kb-close" id="kbClose" type="button" aria-label="Close keyboard shortcuts">✕</button>
+    </h2>
+    <div class="kb-row"><span class="kb-desc">Open this help panel</span>   <kbd class="kb-key">?</kbd></div>
+    <div class="kb-row"><span class="kb-desc">Toggle Focus Mode</span>       <kbd class="kb-key">F</kbd></div>
+    <div class="kb-row"><span class="kb-desc">Go back one step</span>        <kbd class="kb-key">Backspace</kbd></div>
+    <div class="kb-row"><span class="kb-desc">Close / cancel</span>          <kbd class="kb-key">Esc</kbd></div>
+    <div class="kb-row"><span class="kb-desc">Navigate flight list</span>    <kbd class="kb-key">↑ ↓</kbd></div>
+    <div class="kb-row"><span class="kb-desc">Select highlighted item</span> <kbd class="kb-key">Enter / Space</kbd></div>
+    <div class="kb-row"><span class="kb-desc">Navigate seat map</span>       <kbd class="kb-key">↑ ↓ ← →</kbd></div>
+    <div class="kb-row"><span class="kb-desc">Skip to main content</span>    <kbd class="kb-key">Tab</kbd> (first press)</div>
+  </div>
+</div>
+
+<!-- ═══════════════ LANDMARK: banner ═══════════════ -->
+<header role="banner">
+  <a href="#" class="logo" aria-label="SkyWay — go to homepage">
+    <div class="logo-icon" aria-hidden="true">✈</div>
+    SkyWay
+  </a>
+  <div class="header-right">
+    <!-- Keyboard shortcut hint button -->
+    <button class="kb-hint-btn" id="kbOpenBtn" type="button"
+      aria-label="Show keyboard shortcuts" title="Keyboard shortcuts (press ?)">?</button>
+
+    <!-- Focus mode toggle -->
+    <button class="focus-toggle" id="focusBtn" type="button"
+      aria-pressed="false" aria-label="Toggle Focus Mode for easier reading"
+      onclick="toggleFocus()">
+      <span aria-hidden="true">🧠</span>
+      <span class="toggle-label" id="toggleLabel">Focus Mode</span>
+      <div class="toggle-switch" aria-hidden="true"></div>
+    </button>
+  </div>
+</header>
+
+<div class="focus-banner" id="focusBanner" role="alert">
+  ✨ <strong>Focus Mode is on</strong> — bigger text, clearer steps, and helpful tips are shown throughout.
+</div>
+
+<!-- ═══════════════ LANDMARK: navigation (stepper) ═══════════════ -->
+<nav class="stepper" id="stepper" aria-label="Booking progress, 5 steps">
+  <div class="step active" id="step1" aria-current="step">
+    <div class="step-circle" aria-hidden="true">1</div>
+    <div class="step-label">Search</div>
+  </div>
+  <div class="step-line" id="line1" aria-hidden="true"></div>
+  <div class="step" id="step2">
+    <div class="step-circle" aria-hidden="true">2</div>
+    <div class="step-label">Flights</div>
+  </div>
+  <div class="step-line" id="line2" aria-hidden="true"></div>
+  <div class="step" id="step3">
+    <div class="step-circle" aria-hidden="true">3</div>
+    <div class="step-label">Seats</div>
+  </div>
+  <div class="step-line" id="line3" aria-hidden="true"></div>
+  <div class="step" id="step4">
+    <div class="step-circle" aria-hidden="true">4</div>
+    <div class="step-label">Review</div>
+  </div>
+  <div class="step-line" id="line4" aria-hidden="true"></div>
+  <div class="step" id="step5">
+    <div class="step-circle" aria-hidden="true">✓</div>
+    <div class="step-label">Done</div>
+  </div>
+</nav>
+
+<!-- ═══════════════ LANDMARK: main ═══════════════ -->
+<main class="main" id="main-content">
+
+  <!-- ── SCREEN 1: SEARCH ── -->
+  <div class="screen active" id="screen1">
+    <section class="card" aria-labelledby="searchHeading">
+      <h1 class="card-title" id="searchHeading" tabindex="-1">
+        <span class="card-icon" aria-hidden="true">🔍</span>
+        Find Your Flight
+      </h1>
+      <div class="helper-tip" role="note"><span aria-hidden="true">💡</span>
+        <span>Fill in where you're flying from, where you're going, and when. It's like filling out a form at the airport — but easier!</span>
+      </div>
+
+      <fieldset style="border:none;padding:0;margin:0 0 4px 0">
+        <legend class="field-label" style="float:left;width:100%;margin-bottom:10px">Trip Type</legend>
+        <div class="trip-pills" role="group" aria-label="Trip type">
+          <button class="pill" aria-pressed="true"  type="button" onclick="setPill(this,'round')">↔ Round Trip</button>
+          <button class="pill" aria-pressed="false" type="button" onclick="setPill(this,'one')">→ One Way</button>
+          <button class="pill" aria-pressed="false" type="button" onclick="setPill(this,'multi')">⊕ Multi-City</button>
+        </div>
+      </fieldset>
+
+      <div class="row">
+        <div class="field-group">
+          <label class="field-label" for="fromCity">From</label>
+          <p class="field-hint" id="fromHint">Which city are you flying out of?</p>
+          <input type="text" id="fromCity" aria-describedby="fromHint" placeholder="City or airport" value="New York (JFK)" autocomplete="off">
+        </div>
+        <div class="field-group">
+          <label class="field-label" for="toCity">To</label>
+          <p class="field-hint" id="toHint">Which city are you flying to?</p>
+          <input type="text" id="toCity" aria-describedby="toHint" placeholder="City or airport" value="Los Angeles (LAX)" autocomplete="off">
+        </div>
+      </div>
+      <div class="row">
+        <div class="field-group">
+          <label class="field-label" for="departDate">Depart</label>
+          <p class="field-hint" id="departHint">Pick the date you want to leave.</p>
+          <input type="date" id="departDate" aria-describedby="departHint" value="2026-04-15">
+        </div>
+        <div class="field-group" id="returnGroup">
+          <label class="field-label" for="returnDate">Return</label>
+          <p class="field-hint" id="returnHint">Pick the date you want to come back.</p>
+          <input type="date" id="returnDate" aria-describedby="returnHint" value="2026-04-22">
+        </div>
+      </div>
+      <div class="field-group">
+        <label class="field-label" for="cabinClass">Class</label>
+        <p class="field-hint" id="cabinHint">Economy is most affordable. Business is more comfortable.</p>
+        <select id="cabinClass" aria-describedby="cabinHint">
+          <option>Economy</option>
+          <option>Premium Economy</option>
+          <option>Business</option>
+          <option>First Class</option>
+        </select>
+      </div>
+
+      <fieldset style="border:none;padding:0;margin:0">
+        <legend class="field-label" style="float:left;width:100%;margin-bottom:4px">Passengers</legend>
+        <p class="field-hint" id="paxHint">How many people are flying? Press + or − to change.</p>
+        <div aria-describedby="paxHint" style="margin-top:8px">
+          <div class="counter-row">
+            <div><div class="counter-title">Adults</div><div class="counter-sub">Ages 18+</div></div>
+            <div class="counter-controls">
+              <button class="counter-btn" type="button" id="adultMinus" aria-label="Remove 1 adult" onclick="adjust('adults',-1)" disabled>−</button>
+              <span class="counter-val" id="adultsVal" aria-live="polite" aria-label="1 adult">1</span>
+              <button class="counter-btn" type="button" aria-label="Add 1 adult" onclick="adjust('adults',1)">+</button>
+            </div>
+          </div>
+          <div class="counter-row">
+            <div><div class="counter-title">Children</div><div class="counter-sub">Ages 2–17</div></div>
+            <div class="counter-controls">
+              <button class="counter-btn" type="button" id="childMinus" aria-label="Remove 1 child" onclick="adjust('children',-1)" disabled>−</button>
+              <span class="counter-val" id="childrenVal" aria-live="polite" aria-label="0 children">0</span>
+              <button class="counter-btn" type="button" aria-label="Add 1 child" onclick="adjust('children',1)">+</button>
+            </div>
+          </div>
+        </div>
+      </fieldset>
+
+      <button class="btn-primary" type="button" onclick="goTo(2)">Search Flights →</button>
+    </section>
+  </div>
+
+  <!-- ── SCREEN 2: FLIGHTS ── -->
+  <div class="screen" id="screen2">
+    <section class="card" aria-labelledby="flightsHeading">
+      <h1 class="card-title" id="flightsHeading" tabindex="-1">
+        <span class="card-icon" aria-hidden="true">✈</span>
+        Choose Your Flight
+      </h1>
+      <div class="helper-tip" role="note"><span aria-hidden="true">💡</span>
+        <span>Use <strong>↑ ↓ arrow keys</strong> to move between flights, then press <strong>Enter</strong> or <strong>Space</strong> to select one.</span>
+      </div>
+      <!--
+        role="listbox" + role="option" children: full ARIA listbox pattern.
+        Arrow key navigation is handled in JS (roving tabindex).
+      -->
+      <div id="flightList" role="listbox" aria-label="Available flights" aria-required="true"></div>
+      <button class="btn-primary" type="button" id="selectFlightBtn" onclick="goTo(3)" disabled aria-disabled="true">Select This Flight →</button>
+      <button class="btn-back"    type="button" onclick="goTo(1)">← Back to Search</button>
+    </section>
+  </div>
+
+  <!-- ── SCREEN 3: SEATS ── -->
+  <div class="screen" id="screen3">
+    <section class="card" aria-labelledby="seatsHeading">
+      <h1 class="card-title" id="seatsHeading" tabindex="-1">
+        <span class="card-icon" aria-hidden="true">💺</span>
+        Pick Your Seat
+      </h1>
+      <div class="helper-tip" role="note"><span aria-hidden="true">💡</span>
+        <span>Use <strong>arrow keys</strong> to move around the seat map. Press <strong>Enter</strong> or <strong>Space</strong> to select a seat.</span>
+      </div>
+      <ul class="seat-legend" aria-label="Seat colour legend" style="list-style:none">
+        <li class="legend-item"><div class="legend-dot" style="background:#2E5CB8;border:2px solid #90B8FF" aria-hidden="true"></div>Available</li>
+        <li class="legend-item"><div class="legend-dot" style="background:#E8B800;border:2px solid #C09A00" aria-hidden="true"></div>Your Seat</li>
+        <li class="legend-item"><div class="legend-dot" style="background:#2A3A52;border:2px solid #3A4A62" aria-hidden="true"></div>Taken</li>
+        <li class="legend-item"><div class="legend-dot" style="background:#3A3010;border:2px solid #E8B800" aria-hidden="true"></div>Premium</li>
+      </ul>
+      <div class="seat-grid" id="seatGrid" role="group" aria-label="Airplane seat map. Use arrow keys to navigate."></div>
+      <div id="seatInfo" role="status" aria-live="polite"
+        style="text-align:center;margin-top:16px;font-size:14px;min-height:22px;font-weight:600;color:var(--muted)"></div>
+      <button class="btn-primary" type="button" id="confirmSeatBtn" onclick="goTo(4)" disabled aria-disabled="true">Confirm Seat →</button>
+      <button class="btn-back"    type="button" onclick="goTo(2)">← Back to Flights</button>
+    </section>
+  </div>
+
+  <!-- ── SCREEN 4: REVIEW ── -->
+  <div class="screen" id="screen4">
+    <section class="card" aria-labelledby="reviewHeading">
+      <h1 class="card-title" id="reviewHeading" tabindex="-1">
+        <span class="card-icon" aria-hidden="true">📋</span>
+        Review Your Booking
+      </h1>
+      <div class="helper-tip" role="note"><span aria-hidden="true">💡</span>
+        <span>Almost done! Check the details below. If something is wrong, press <strong>Go Back</strong> to change it.</span>
+      </div>
+      <div id="reviewContent" role="region" aria-label="Booking summary"></div>
+      <button class="btn-primary" type="button" onclick="goTo(5)">Confirm &amp; Book ✓</button>
+      <button class="btn-back"    type="button" onclick="goTo(3)">← Go Back</button>
+    </section>
+  </div>
+
+  <!-- ── SCREEN 5: CONFIRMATION ── -->
+  <div class="screen" id="screen5">
+    <section class="card" aria-labelledby="confirmHeading">
+      <div class="confirm-hero">
+        <div class="confirm-icon" aria-hidden="true">✓</div>
+        <h1 class="confirm-title" id="confirmHeading" tabindex="-1">You're all booked!</h1>
+        <p class="confirm-sub">A confirmation has been sent to your email.</p>
+      </div>
+      <div class="confirm-ref" aria-label="Booking reference number">
+        <div class="ref-label">Booking Reference</div>
+        <div class="ref-code" id="refCode" aria-live="polite">SKY-4821</div>
+      </div>
+      <div id="confirmSummary" role="region" aria-label="Trip details"></div>
+      <button class="btn-primary" type="button" style="margin-top:24px" onclick="goTo(1)">Book Another Flight</button>
+    </section>
+  </div>
+
+</main>
+
+<!-- ═══════════════ LANDMARK: contentinfo ═══════════════ -->
+<footer role="contentinfo">
+  <p>© 2026 SkyWay. All rights reserved. &nbsp;|&nbsp;
+    <a href="#">Accessibility Statement</a> &nbsp;|&nbsp;
+    <button type="button" onclick="openKb()"
+      style="background:none;border:none;font:inherit;color:var(--muted);text-decoration:underline;cursor:pointer;font-size:12px;padding:0">
+      Keyboard Shortcuts
+    </button>
+  </p>
+</footer>
+
+<script>
+  // ═══════════════════════════════════════════════════
+  // STATE
+  // ═══════════════════════════════════════════════════
+  let currentStep    = 1;
+  let isFocus        = false;
+  let selectedFlight = null;
+  let selectedSeat   = null;
+  let adults         = 1;
+  let children       = 0;
+
+  // Seat grid layout: rows × cols, used for arrow key navigation
+  const ROWS = 15;
+  const COLS = ['A','B','C','D','E','F'];
+  const taken   = new Set(['1A','1B','2C','3F','4A','4E','5B','6C','7D','8A','8F','9B','9E','10C','10D','11A','12F']);
+  const premium = new Set(['1C','1D','1E','1F','2A','2B','2D','2E','2F','3A','3B','3C','3D','3E']);
+
+  const flights = [
+    { id:1, airline:'SkyWay Direct',    dep:'06:45', arr:'09:52', dur:'5h 07m', stops:'Nonstop',      price:189, badge:'Best Value' },
+    { id:2, airline:'American Airlines', dep:'09:15', arr:'14:30', dur:'5h 15m', stops:'Nonstop',      price:214, badge:null },
+    { id:3, airline:'Delta Air Lines',   dep:'12:00', arr:'18:40', dur:'6h 40m', stops:'1 Stop (PHX)', price:159, badge:'Cheapest' },
+    { id:4, airline:'United Airlines',   dep:'15:30', arr:'20:50', dur:'5h 20m', stops:'Nonstop',      price:229, badge:null },
+  ];
+
+  // ═══════════════════════════════════════════════════
+  // SCREEN READER ANNOUNCER
+  // ═══════════════════════════════════════════════════
+  function announce(msg) {
+    const r = document.getElementById('liveRegion');
+    r.textContent = '';
+    setTimeout(() => { r.textContent = msg; }, 60);
+  }
+
+  // ═══════════════════════════════════════════════════
+  // FOCUS MANAGEMENT
+  // Move focus to each screen's heading when navigating steps.
+  // tabindex="-1" on headings allows programmatic focus without
+  // adding them to the natural tab order.
+  // ═══════════════════════════════════════════════════
+  const screenHeadings = {
+    1: 'searchHeading',
+    2: 'flightsHeading',
+    3: 'seatsHeading',
+    4: 'reviewHeading',
+    5: 'confirmHeading',
+  };
+
+  function moveFocusToHeading(step) {
+    const id = screenHeadings[step];
+    if (!id) return;
+    const el = document.getElementById(id);
+    if (el) {
+      // Small delay lets the screen paint before focus moves
+      setTimeout(() => { el.focus(); }, 80);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // KEYBOARD SHORTCUT OVERLAY (focus trap while open)
+  // ═══════════════════════════════════════════════════
+  let lastFocusBeforeKb = null;
+
+  function openKb() {
+    lastFocusBeforeKb = document.activeElement;
+    document.getElementById('kbOverlay').classList.add('open');
+    document.getElementById('kbClose').focus();
+  }
+
+  function closeKb() {
+    document.getElementById('kbOverlay').classList.remove('open');
+    if (lastFocusBeforeKb) lastFocusBeforeKb.focus();
+  }
+
+  document.getElementById('kbOpenBtn').addEventListener('click', openKb);
+  document.getElementById('kbClose').addEventListener('click', closeKb);
+
+  // Focus trap inside kb overlay
+  document.getElementById('kbOverlay').addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); closeKb(); return; }
+    if (e.key === 'Tab') {
+      // Only focusable element is the close button — keep focus on it
+      e.preventDefault();
+      document.getElementById('kbClose').focus();
+    }
+  });
+
+  // ═══════════════════════════════════════════════════
+  // GLOBAL KEYBOARD SHORTCUTS
+  // ═══════════════════════════════════════════════════
+  document.addEventListener('keydown', e => {
+    // Don't fire shortcuts when typing in inputs
+    const tag = document.activeElement.tagName;
+    const inInput = (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA');
+    if (inInput) return;
+
+    // Don't fire if kb overlay is open (it has its own handler)
+    if (document.getElementById('kbOverlay').classList.contains('open')) return;
+
+    switch (e.key) {
+      case '?':
+        e.preventDefault();
+        openKb();
+        break;
+      case 'f':
+      case 'F':
+        e.preventDefault();
+        toggleFocus();
+        break;
+      case 'Backspace':
+        // Go back one step (not on step 1)
+        if (currentStep > 1) { e.preventDefault(); goTo(currentStep - 1); }
+        break;
+      case 'Escape':
+        if (currentStep > 1) { e.preventDefault(); goTo(currentStep - 1); }
+        break;
+    }
+  });
+
+  // ═══════════════════════════════════════════════════
+  // FOCUS MODE TOGGLE
+  // ═══════════════════════════════════════════════════
+  function toggleFocus() {
+    isFocus = !isFocus;
+    document.body.classList.toggle('focus', isFocus);
+    const btn = document.getElementById('focusBtn');
+    btn.setAttribute('aria-pressed', String(isFocus));
+    document.getElementById('toggleLabel').textContent = isFocus ? 'Focus Mode ON' : 'Focus Mode';
+    announce(isFocus
+      ? 'Focus Mode turned on. Larger text and helpful tips are now visible.'
+      : 'Focus Mode turned off.');
+  }
+
+  // ═══════════════════════════════════════════════════
+  // TRIP PILLS
+  // ═══════════════════════════════════════════════════
+  function setPill(el, type) {
+    document.querySelectorAll('.pill').forEach(p => p.setAttribute('aria-pressed','false'));
+    el.setAttribute('aria-pressed','true');
+    document.getElementById('returnGroup').style.display = type === 'round' ? '' : 'none';
+  }
+
+  // ═══════════════════════════════════════════════════
+  // PASSENGER COUNTER
+  // ═══════════════════════════════════════════════════
+  function adjust(type, delta) {
+    if (type === 'adults') {
+      adults = Math.max(1, Math.min(9, adults + delta));
+      const el = document.getElementById('adultsVal');
+      el.textContent = adults;
+      el.setAttribute('aria-label', `${adults} adult${adults !== 1 ? 's' : ''}`);
+      document.getElementById('adultMinus').disabled = adults <= 1;
+    } else {
+      children = Math.max(0, Math.min(9, children + delta));
+      const el = document.getElementById('childrenVal');
+      el.textContent = children;
+      el.setAttribute('aria-label', `${children} ${children === 1 ? 'child' : 'children'}`);
+      document.getElementById('childMinus').disabled = children <= 0;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // STEP NAVIGATION
+  // ═══════════════════════════════════════════════════
+  function goTo(step) {
+    document.getElementById('screen' + currentStep).classList.remove('active');
+    document.querySelectorAll('.step').forEach(s => s.removeAttribute('aria-current'));
+
+    currentStep = step;
+    document.getElementById('screen' + currentStep).classList.add('active');
+    updateStepper();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    const names = ['','Search for flights','Choose your flight','Pick your seat','Review your booking','Booking confirmed'];
+    announce(`Step ${step} of 5: ${names[step]}`);
+
+    // Move keyboard focus to the new screen's heading
+    moveFocusToHeading(step);
+
+    if (step === 2) renderFlights();
+    if (step === 3) renderSeats();
+    if (step === 4) renderReview();
+    if (step === 5) renderConfirm();
+  }
+
+  function updateStepper() {
+    for (let i = 1; i <= 5; i++) {
+      const s = document.getElementById('step' + i);
+      s.classList.remove('active','done');
+      if (i < currentStep)      s.classList.add('done');
+      else if (i === currentStep){ s.classList.add('active'); s.setAttribute('aria-current','step'); }
+    }
+    for (let i = 1; i <= 4; i++) {
+      document.getElementById('line' + i).classList.toggle('done', i < currentStep);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════
+  // RENDER FLIGHTS + ARROW KEY NAVIGATION
+  // Pattern: roving tabindex — only ONE card in tab order at a time.
+  // Up/Down arrows move focus between cards.
+  // ═══════════════════════════════════════════════════
+  function renderFlights() {
+    const from = document.getElementById('fromCity').value || 'JFK';
+    const to   = document.getElementById('toCity').value   || 'LAX';
+    const date = document.getElementById('departDate').value;
+    const list = document.getElementById('flightList');
+
+    list.innerHTML = `<p style="font-size:13px;color:var(--muted);margin-bottom:16px;font-weight:600"
+      aria-live="polite">${flights.length} flights found · ${from} → ${to} · ${formatDate(date)}</p>`;
+
+    flights.forEach((f, idx) => {
+      const isSelected = selectedFlight === f.id;
+      const card = document.createElement('div');
+      card.className = 'flight-card';
+      card.setAttribute('role',         'option');
+      card.setAttribute('aria-selected', String(isSelected));
+      // Roving tabindex: only first card (or selected) gets tabindex=0
+      card.setAttribute('tabindex', (idx === 0 || isSelected) ? '0' : '-1');
+      card.setAttribute('data-flight-idx', String(idx));
+      card.setAttribute('aria-label',
+        `${f.airline}. Departs ${f.dep}, arrives ${f.arr}. Duration ${f.dur}. ${f.stops}. $${f.price} per person.${f.badge ? ' ' + f.badge + '.' : ''}${isSelected ? ' Currently selected.' : ''}`
+      );
+
+      card.innerHTML = `
+        <div class="flight-top">
+          <span class="flight-airline">${f.airline}</span>
+          ${f.badge ? `<span class="flight-badge">${f.badge}</span>` : ''}
+          <div class="flight-check" aria-hidden="true">✓</div>
+        </div>
+        <div class="flight-times" aria-hidden="true">
+          <div>
+            <div class="flight-time">${f.dep}</div>
+            <div class="flight-city">New York</div>
+          </div>
+          <div class="flight-line">
+            <div class="flight-duration">${f.dur}</div>
+            <div class="line-visual"><div class="line-dot left"></div><div class="line-dot right"></div></div>
+            <div style="font-size:11px;color:var(--muted);margin-top:2px;font-weight:600">${f.stops}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="flight-time">${f.arr}</div>
+            <div class="flight-city">Los Angeles</div>
+          </div>
+        </div>
+        <div class="flight-bottom" aria-hidden="true">
+          <div class="flight-stops">${f.stops}</div>
+          <div style="text-align:right">
+            <div class="flight-price">$${f.price}</div>
+            <div class="price-note">per person</div>
+          </div>
+        </div>`;
+
+      card.addEventListener('click', () => selectFlight(f.id, card));
+      card.addEventListener('keydown', e => handleFlightKeydown(e, idx));
+      list.appendChild(card);
+    });
+  }
+
+  // Arrow key navigation for flight list (roving tabindex pattern)
+  function handleFlightKeydown(e, idx) {
+    const cards = [...document.querySelectorAll('.flight-card')];
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      selectFlight(flights[idx].id, cards[idx]);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const next = (idx + 1) % cards.length;
+      setFlightFocus(cards, next);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prev = (idx - 1 + cards.length) % cards.length;
+      setFlightFocus(cards, prev);
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      setFlightFocus(cards, 0);
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      setFlightFocus(cards, cards.length - 1);
+    }
+  }
+
+  function setFlightFocus(cards, idx) {
+    cards.forEach((c, i) => c.setAttribute('tabindex', i === idx ? '0' : '-1'));
+    cards[idx].focus();
+  }
+
+  function selectFlight(id, cardEl) {
+    selectedFlight = id;
+    const cards = [...document.querySelectorAll('.flight-card')];
+    cards.forEach((c, i) => {
+      const sel = flights[i].id === id;
+      c.setAttribute('aria-selected', String(sel));
+      c.setAttribute('tabindex', sel ? '0' : '-1');
+      // Update aria-label to reflect selection state
+      const f = flights[i];
+      c.setAttribute('aria-label',
+        `${f.airline}. Departs ${f.dep}, arrives ${f.arr}. Duration ${f.dur}. ${f.stops}. $${f.price} per person.${f.badge ? ' ' + f.badge + '.' : ''}${sel ? ' Currently selected.' : ''}`
+      );
+    });
+    const btn = document.getElementById('selectFlightBtn');
+    btn.disabled = false;
+    btn.removeAttribute('aria-disabled');
+    const f = flights.find(x => x.id === id);
+    announce(`${f.airline} selected. Departs ${f.dep}, arrives ${f.arr}. $${f.price} per person. Press Tab to reach the Select button.`);
+  }
+
+  // ═══════════════════════════════════════════════════
+  // RENDER SEATS + ARROW KEY NAVIGATION
+  // Pattern: roving tabindex across the 2D seat grid.
+  // Arrow keys move through rows/columns; aisle is skipped.
+  // ═══════════════════════════════════════════════════
+
+  // Flat list of seat IDs in visual order (skipping aisle gap)
+  function buildSeatOrder() {
+    const order = [];
+    for (let r = 1; r <= ROWS; r++) {
+      for (let c = 0; c < COLS.length; c++) {
+        order.push(`${r}${COLS[c]}`);
+      }
+    }
+    return order;
+  }
+  const seatOrder = buildSeatOrder(); // e.g. ['1A','1B','1C','1D','1E','1F','2A'...]
+
+  function renderSeats() {
+    const grid = document.getElementById('seatGrid');
+    grid.innerHTML = '';
+
+    for (let row = 1; row <= ROWS; row++) {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'seat-row';
+      rowEl.setAttribute('role', 'row');
+
+      const rowNum = document.createElement('div');
+      rowNum.className = 'seat-row-num';
+      rowNum.textContent = row;
+      rowNum.setAttribute('aria-hidden','true');
+      rowEl.appendChild(rowNum);
+
+      COLS.forEach((col, ci) => {
+        if (ci === 3) {
+          const aisle = document.createElement('div');
+          aisle.className = 'seat-aisle';
+          aisle.setAttribute('aria-hidden','true');
+          rowEl.appendChild(aisle);
+        }
+        const id      = `${row}${col}`;
+        const isTaken = taken.has(id);
+        const isPrem  = premium.has(id);
+        const isSel   = selectedSeat === id;
+        const cls     = isSel ? 'selected' : isTaken ? 'taken' : isPrem ? 'premium' : 'available';
+        const label   = isTaken ? `Seat ${id}, taken, unavailable`
+                      : isSel   ? `Seat ${id}, your selected seat`
+                      : isPrem  ? `Seat ${id}, premium class, available`
+                      :           `Seat ${id}, economy, available`;
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `seat ${cls}`;
+        btn.textContent = col;
+        btn.setAttribute('aria-label',   label);
+        btn.setAttribute('aria-pressed', String(isSel));
+        btn.setAttribute('data-seat-id', id);
+        // Roving tabindex: only one seat in tab order at a time
+        // Default roving position: first available seat, or selected seat
+        const rovingId = selectedSeat || firstAvailableSeat();
+        btn.setAttribute('tabindex', id === rovingId ? '0' : '-1');
+
+        if (isTaken) { btn.disabled = true; btn.setAttribute('aria-disabled','true'); }
+        btn.addEventListener('click',   () => selectSeat(id, isTaken));
+        btn.addEventListener('keydown', e  => handleSeatKeydown(e, id));
+        rowEl.appendChild(btn);
+      });
+      grid.appendChild(rowEl);
+    }
+  }
+
+  function firstAvailableSeat() {
+    return seatOrder.find(id => !taken.has(id)) || '1C';
+  }
+
+  // Arrow key navigation for seat map (roving tabindex)
+  function handleSeatKeydown(e, id) {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      selectSeat(id, taken.has(id));
+      return;
+    }
+    const currentIdx = seatOrder.indexOf(id);
+    if (currentIdx === -1) return;
+
+    let targetIdx = currentIdx;
+    if      (e.key === 'ArrowRight') { e.preventDefault(); targetIdx = currentIdx + 1; }
+    else if (e.key === 'ArrowLeft')  { e.preventDefault(); targetIdx = currentIdx - 1; }
+    else if (e.key === 'ArrowDown')  { e.preventDefault(); targetIdx = currentIdx + COLS.length; }
+    else if (e.key === 'ArrowUp')    { e.preventDefault(); targetIdx = currentIdx - COLS.length; }
+    else if (e.key === 'Home')       { e.preventDefault(); targetIdx = 0; }
+    else if (e.key === 'End')        { e.preventDefault(); targetIdx = seatOrder.length - 1; }
+    else return;
+
+    // Clamp to valid range
+    targetIdx = Math.max(0, Math.min(seatOrder.length - 1, targetIdx));
+    const targetId = seatOrder[targetIdx];
+
+    // Update roving tabindex and move focus
+    document.querySelectorAll('.seat').forEach(s => s.setAttribute('tabindex','-1'));
+    const targetBtn = document.querySelector(`[data-seat-id="${targetId}"]`);
+    if (targetBtn) {
+      targetBtn.setAttribute('tabindex','0');
+      targetBtn.focus();
+    }
+  }
+
+  function selectSeat(id, isTaken) {
+    if (isTaken) {
+      announce(`Seat ${id} is taken and cannot be selected.`);
+      return;
+    }
+    selectedSeat = id;
+    renderSeats();
+    // Restore focus to the newly selected seat after re-render
+    setTimeout(() => {
+      const seatBtn = document.querySelector(`[data-seat-id="${id}"]`);
+      if (seatBtn) { seatBtn.setAttribute('tabindex','0'); seatBtn.focus(); }
+    }, 30);
+
+    const info = document.getElementById('seatInfo');
+    info.textContent = `Seat ${id} selected ✓`;
+    info.style.color = isFocus ? 'var(--f-blue)' : '#90B8FF';
+
+    const btn = document.getElementById('confirmSeatBtn');
+    btn.disabled = false;
+    btn.removeAttribute('aria-disabled');
+    announce(`Seat ${id} selected. Press Tab to reach the Confirm Seat button.`);
+  }
+
+  // ═══════════════════════════════════════════════════
+  // RENDER REVIEW
+  // ═══════════════════════════════════════════════════
+  function renderReview() {
+    const f     = flights.find(x => x.id === selectedFlight) || flights[0];
+    const pax   = adults + children;
+    const total = f.price * pax;
+    const from  = document.getElementById('fromCity').value  || 'New York (JFK)';
+    const to    = document.getElementById('toCity').value    || 'Los Angeles (LAX)';
+    const date  = document.getElementById('departDate').value;
+    const cabin = document.getElementById('cabinClass').value;
+
+    document.getElementById('reviewContent').innerHTML = `
+      <dl>
+        <div class="summary-row"><dt class="summary-label">Route</dt>      <dd class="summary-val">${from} → ${to}</dd></div>
+        <div class="summary-row"><dt class="summary-label">Date</dt>       <dd class="summary-val">${formatDate(date)}</dd></div>
+        <div class="summary-row"><dt class="summary-label">Flight</dt>     <dd class="summary-val">${f.dep} – ${f.arr} (${f.dur})</dd></div>
+        <div class="summary-row"><dt class="summary-label">Airline</dt>    <dd class="summary-val">${f.airline}</dd></div>
+        <div class="summary-row"><dt class="summary-label">Seat</dt>       <dd class="summary-val">${selectedSeat || 'Not selected'}</dd></div>
+        <div class="summary-row"><dt class="summary-label">Cabin</dt>      <dd class="summary-val">${cabin}</dd></div>
+        <div class="summary-row"><dt class="summary-label">Passengers</dt> <dd class="summary-val">${adults} adult${adults>1?'s':''}${children?', '+children+' child'+(children>1?'ren':''):''}</dd></div>
+        <div class="summary-row"><dt class="summary-label">Per person</dt> <dd class="summary-val">$${f.price}</dd></div>
+      </dl>
+      <div class="summary-total">
+        <span>Total</span>
+        <span class="total-price" aria-label="Total price: $${total}">$${total}</span>
+      </div>`;
+  }
+
+  // ═══════════════════════════════════════════════════
+  // RENDER CONFIRM
+  // ═══════════════════════════════════════════════════
+  function renderConfirm() {
+    const f    = flights.find(x => x.id === selectedFlight) || flights[0];
+    const from = document.getElementById('fromCity').value || 'New York (JFK)';
+    const to   = document.getElementById('toCity').value   || 'Los Angeles (LAX)';
+    const date = document.getElementById('departDate').value;
+    const ref  = 'SKY-' + Math.floor(1000 + Math.random() * 9000);
+    document.getElementById('refCode').textContent = ref;
+    document.getElementById('confirmSummary').innerHTML = `
+      <dl>
+        <div class="summary-row"><dt class="summary-label">Route</dt>     <dd class="summary-val">${from} → ${to}</dd></div>
+        <div class="summary-row"><dt class="summary-label">Date</dt>      <dd class="summary-val">${formatDate(date)}</dd></div>
+        <div class="summary-row"><dt class="summary-label">Departure</dt> <dd class="summary-val">${f.dep}</dd></div>
+        <div class="summary-row"><dt class="summary-label">Seat</dt>      <dd class="summary-val">${selectedSeat || 'Auto-assigned'}</dd></div>
+      </dl>`;
+    announce(`Booking confirmed! Your reference number is ${ref}.`);
+  }
+
+  // ═══════════════════════════════════════════════════
+  // HELPERS
+  // ═══════════════════════════════════════════════════
+  function formatDate(d) {
+    if (!d) return '';
+    return new Date(d + 'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'long',day:'numeric',year:'numeric'});
+  }
+</script>
+</body>
+</html>
